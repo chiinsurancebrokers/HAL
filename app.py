@@ -5,6 +5,7 @@ Railway Edition — HAL is the brain, everything else is a tool.
 """
 
 import streamlit as st
+import os
 import json
 import re
 import base64
@@ -64,7 +65,6 @@ st.set_page_config(
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-/* Ashlar brand */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 .hal-logo { text-align: center; padding: 16px 0 8px; }
@@ -74,27 +74,22 @@ st.markdown("""
 .hal-sub { font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
     color: #7A6A5A; margin-top: -4px; }
 
-/* Section headers */
 .section-header { font-size: 11px; font-weight: 600; letter-spacing: 2px;
     text-transform: uppercase; color: #7A6A5A;
     border-bottom: 1px solid #E8E0D5; padding-bottom: 8px; margin-bottom: 16px; }
 
-/* HAL response */
 .hal-response { background: white; border-left: 3px solid #C9A96E;
     padding: 16px 20px; border-radius: 0 10px 10px 0; margin-top: 8px; }
 
-/* Second opinion */
 .gpt-opinion { background: #F0F7FF; border-left: 3px solid #3B82F6;
     padding: 14px 18px; border-radius: 0 10px 10px 0; margin-top: 8px;
     font-size: 14px; }
 .gpt-label { font-size: 11px; font-weight: 700; color: #3B82F6;
     letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
 
-/* File tray */
 .file-badge { display: inline-block; background: #F4F0EB; border: 1px solid #E8E0D5;
     border-radius: 8px; padding: 4px 10px; margin: 2px 4px; font-size: 12px; }
 
-/* PIN */
 .pin-container { max-width: 320px; margin: 60px auto; text-align: center; }
 </style>
 """, unsafe_allow_html=True)
@@ -114,12 +109,12 @@ RETRY_WAIT_BASE = 10
 _defaults = {
     "mode": "business",
     "private_unlocked": False,
-    "active_module": "hal_chat",     # HAL is always the default — THE BRAIN
+    "active_module": "hal_chat",
     "chat_history": [],
-    "hal_uploads": [],               # current uploaded files metadata
-    "hal_digest": "",                # extracted text for ChatGPT
-    "hal_file_blocks": [],           # Claude content blocks from uploads
-    "second_opinions": {},           # {msg_index: gpt_text}
+    "hal_uploads": [],
+    "hal_digest": "",
+    "hal_file_blocks": [],
+    "second_opinions": {},
     "session_id": datetime.now().strftime("%Y%m%d-%H%M"),
 }
 for k, v in _defaults.items():
@@ -128,23 +123,36 @@ for k, v in _defaults.items():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HELPERS
+# HELPERS — Railway uses env vars, Streamlit Cloud uses secrets.toml
 # ══════════════════════════════════════════════════════════════════════════════
+def _secret(key, default=""):
+    """Read from st.secrets first, fall back to os.environ (Railway)."""
+    try:
+        val = st.secrets.get(key, "")
+        if val:
+            return val
+    except Exception:
+        pass
+    return os.environ.get(key, default)
+
+
 def get_api_key():
     return (
-        st.secrets.get("Claude_API_Key") or
-        st.secrets.get("ANTHROPIC_API_KEY") or
-        st.secrets.get("claude_api_key") or ""
+        _secret("Claude_API_Key") or
+        _secret("ANTHROPIC_API_KEY") or
+        _secret("claude_api_key") or ""
     )
+
 
 def get_openai_key():
     return (
-        st.secrets.get("OPENAI_API_KEY") or
-        st.secrets.get("openai_api_key") or ""
+        _secret("OPENAI_API_KEY") or
+        _secret("openai_api_key") or ""
     )
 
+
 def check_pin(pin_input):
-    stored = st.secrets.get("HAL_PIN", "")
+    stored = _secret("HAL_PIN")
     if not stored:
         return False
     return pin_input == stored
@@ -224,7 +232,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Mode switch
     st.markdown("**Mode**")
     col1, col2 = st.columns(2)
     with col1:
@@ -242,7 +249,6 @@ with st.sidebar:
 
     st.divider()
 
-    # ── THE BRAIN — always first ─────────────────────────────────────────
     st.markdown('<div class="section-header">🧠 THE BRAIN</div>', unsafe_allow_html=True)
     if st.button("💬  HAL Assistant", key="nav_hal", use_container_width=True,
                  type="primary" if st.session_state.active_module == "hal_chat" else "secondary"):
@@ -251,7 +257,6 @@ with st.sidebar:
 
     st.divider()
 
-    # ── TOOLS — subsidiary ───────────────────────────────────────────────
     if st.session_state.mode == "business":
         st.markdown('<div class="section-header">🔧 TOOLS</div>', unsafe_allow_html=True)
 
@@ -344,7 +349,7 @@ def render_hal_chat():
     api_key = get_api_key()
     openai_key = get_openai_key()
 
-    # ── FILE UPLOAD — the killer feature ─────────────────────────────────
+    # ── FILE UPLOAD ──────────────────────────────────────────────────────
     with st.expander("📎 Upload files for HAL to analyse", expanded=not bool(st.session_state.chat_history)):
         uploaded = st.file_uploader(
             "Drop PDFs, images, Word docs, Excel, CSV — anything",
@@ -361,7 +366,6 @@ def render_hal_chat():
                 st.session_state.hal_digest = digest
                 st.session_state.hal_uploads = summaries
 
-            # Show file badges
             badges = " ".join(
                 f'<span class="file-badge">{icon} {name}</span>'
                 for name, icon in summaries
@@ -369,7 +373,6 @@ def render_hal_chat():
             st.markdown(badges, unsafe_allow_html=True)
             st.success(f"✅ {len(summaries)} file(s) loaded — HAL can see them now. Ask your question below.")
         elif st.session_state.hal_uploads:
-            # Show previously loaded files
             badges = " ".join(
                 f'<span class="file-badge">{icon} {name}</span>'
                 for name, icon in st.session_state.hal_uploads
@@ -389,7 +392,6 @@ def render_hal_chat():
                     with st.chat_message("user"):
                         content = msg["content"]
                         if isinstance(content, list):
-                            # Show text parts only (images shown as badge)
                             for block in content:
                                 if isinstance(block, dict) and block.get("type") == "text":
                                     st.write(block["text"])
@@ -418,7 +420,6 @@ def render_hal_chat():
                                     st.session_state.second_opinions[i] = opinion
                                     st.rerun()
 
-                        # Show existing second opinion
                         if i in st.session_state.second_opinions:
                             st.markdown(f"""<div class="gpt-opinion">
                                 <div class="gpt-label">🤖 ChatGPT Second Opinion (advisory only)</div>
@@ -453,13 +454,10 @@ def render_hal_chat():
     # ── CHAT INPUT ───────────────────────────────────────────────────────
     user_input = st.chat_input("Message HAL — upload files above, then ask here...")
     if user_input:
-        # Build message with file blocks if present
         file_blocks = st.session_state.hal_file_blocks
         if file_blocks:
-            # Combine text input + file blocks into a multi-block message
             content_blocks = list(file_blocks) + [{"type": "text", "text": user_input}]
             st.session_state.chat_history.append({"role": "user", "content": content_blocks})
-            # Clear file blocks after first use (they're in the conversation now)
             st.session_state.hal_file_blocks = []
         else:
             st.session_state.chat_history.append({"role": "user", "content": user_input})
@@ -467,13 +465,12 @@ def render_hal_chat():
         if not api_key:
             st.session_state.chat_history.append({
                 "role": "assistant",
-                "content": "⚠️ No API key found. Add Claude_API_Key to your Streamlit/Railway secrets."
+                "content": "⚠️ No API key found. Add Claude_API_Key to your Railway environment variables."
             })
         else:
             with st.spinner("HAL is thinking..."):
                 try:
                     client = anthropic.Anthropic(api_key=api_key)
-                    # Build messages for Claude
                     messages = []
                     for m in st.session_state.chat_history:
                         messages.append({"role": m["role"], "content": m["content"]})
@@ -520,7 +517,6 @@ def render_quotes():
         "📄 PDF → AI Extraction → PPTX",
     ])
 
-    # ══ TAB 1: INSTANT LIVE QUOTE ════════════════════════════════════════
     with tab_live:
         if not RATES_LOADED:
             st.warning("rate_tables.py not found. Add it alongside app.py.")
@@ -591,7 +587,6 @@ def render_quotes():
                 st.session_state["quote_client"] = q_name
                 st.rerun()
 
-        # Display results
         if st.session_state.get("quote_results"):
             results = st.session_state["quote_results"]
             client = st.session_state.get("quote_client", "Client")
@@ -617,7 +612,6 @@ def render_quotes():
                     {" · ".join(str(m[0]) + ": €" + f"{m[2]:,.0f}" for m in r["members"])}
                     </div></div>""", unsafe_allow_html=True)
 
-    # ══ TAB 2: PDF EXTRACTION ════════════════════════════════════════════
     with tab_pdf:
         if not EXTRACT_OK:
             st.warning("extraction.py or analysis.py not found.")
@@ -678,7 +672,7 @@ def render_comms():
 
     api_key = get_api_key()
     if not api_key:
-        st.warning("Add Claude_API_Key to secrets.")
+        st.warning("Add Claude_API_Key to Railway variables.")
         return
 
     comm_type = st.selectbox("Type", [
@@ -771,11 +765,11 @@ elif mode == "business":
     elif module == "clients":      render_clients()
     elif module == "apps":         render_apps()
     elif module == "pets":         render_pets()
-    else:                          render_hal_chat()  # Default = HAL
+    else:                          render_hal_chat()
 
 elif mode == "private" and st.session_state.private_unlocked:
     if module == "hal_chat":       render_hal_chat()
     elif module == "lodge":        render_lodge()
     elif module == "finance":      render_finance()
     elif module == "health":       render_health()
-    else:                          render_hal_chat()  # Default = HAL
+    else:                          render_hal_chat()
