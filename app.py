@@ -5,12 +5,10 @@ Railway Edition — HAL is the brain, everything else is a tool.
 """
 
 import streamlit as st
-import hashlib
 import json
 import re
 import base64
 import time as _time
-import hashlib as _hl
 from datetime import datetime
 
 # ── HAL Brain — universal file analysis + ChatGPT second opinion ─────────────
@@ -149,7 +147,7 @@ def check_pin(pin_input):
     stored = st.secrets.get("HAL_PIN", "")
     if not stored:
         return False
-    return hashlib.sha256(pin_input.encode()).hexdigest() == stored
+    return pin_input == stored
 
 
 # ══════════════════════════════════════════════════════════════════════════════
